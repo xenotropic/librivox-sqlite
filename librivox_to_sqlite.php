@@ -15,12 +15,14 @@ $books_processed = 0;
 
 // Parameters for what to get
 // $offset=0; $set_size=100; $max=100000; // gets the entire database
-$offset=3000; $set_size=10; $max=3050; // gets the entire database
-
+//$offset=3000; $set_size=10; $max=3050; // gets the entire database
+$set_size=100000;
+$delay=500000; //microsecond delay between requests to reduce load on the server
 
 // Reset database
-unlink ('./librivox.db');
-$db_file = 'sqlite:./librivox.db';
+$database_filename = './librivox.sqlite3';
+unlink ($database_filename);
+$db_file = 'sqlite:' . $database_filename;
 $db = new PDO ($db_file);
 $db -> setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $create_db_sql = file_get_contents ("./librivox_db.sql");
@@ -29,14 +31,30 @@ foreach ($statements as $stmt ) {  // pdo query can only handle one statement at
   $db->query($stmt);
 }
 
+$book_id_loader = new XmlArray ();
+$book_id_list = $book_id_loader->load_string ( file_get_contents ("https://librivox.org/api/feed/audiobooks?limit=".$set_size."&fields={id}"));
+$book_id_list = $book_id_list['children'][0]['children'];
+
+echo "Loading ".count($book_id_list)." books, now on      ";
+
+foreach ($book_id_list as $book_id_array) {
+  $book_id = $book_id_array['children'][0]['content'];
+  loadForURL ($db, "https://librivox.org/api/feed/audiobooks?id=".$book_id."&extended=1");
+  
+}
+
+// print_r ( $book_id_list );
 
 
-echo "Loading book      ";
+/** this doesn't work because with extended=1 the grouping is random even with offset and limit
 
 while ( loadForURL ($db, "https://librivox.org/api/feed/audiobooks?offset=".$offset."&limit=".$set_size."&extended=1") ) {
   $offset += $set_size;
   if ( $offset > $max ) break;
 };
+
+*/
+
 
 $elapsed_time = ((microtime(true) - $start_time));
 
@@ -61,10 +79,8 @@ function loadForURL ( $db, $librivox_url ) {
   foreach ( $array as $key=> $value ) {
     global $books_processed;
     $books_processed++;
-    if ( $books_processed %10 == 0 ) {
-      for ( $i = 0; $i < strlen ( $books_processed ); $i ++ ) echo chr(8);
-      echo $books_processed;
-    }
+    for ( $i = 0; $i < strlen ( $books_processed ); $i ++ ) echo chr(8);
+    echo $books_processed;
     $book_properties = array();
     foreach ( $value['children'] as $properties_array ) {
       if ( $properties_array['name'] == 'url_iarchive') $iarchive_url = $properties_array['content']; 
@@ -176,6 +192,7 @@ function insertSection ( $sectionXMLArray, $db, $parent_id, $iarchive_url ) { //
     $stmt->bindValue (':reader_id', $section_properties['reader_id'], PDO::PARAM_INT);
     $stmt->execute();
   }
+  return $section_ids;
 }
 
 class XmlArray {
