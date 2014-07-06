@@ -14,13 +14,13 @@ $time_for_iafetch = 0;
 $books_processed = 0;
 
 // Parameters for what to get
-// $offset=0; $set_size=100; $max=100000; // gets the entire database
-//$offset=3000; $set_size=10; $max=3050; // gets the entire database
-$set_size=100000;
-$delay=500000; //microsecond delay between requests to reduce load on the server
+
+$set_size=100000; $delay=250000; // for real -- get all, but delay to distribute load on lv server
+// $set_size=100; $delay=250; // for testing
 
 // Reset database
 $database_filename = './librivox.sqlite3';
+copy ($database_filename, $database_filename . '.bak');
 unlink ($database_filename);
 $db_file = 'sqlite:' . $database_filename;
 $db = new PDO ($db_file);
@@ -43,10 +43,8 @@ foreach ($book_id_list as $book_id_array) {
   
 }
 
-// print_r ( $book_id_list );
 
-
-/** this doesn't work because with extended=1 the grouping is random even with offset and limit
+/** this doesn't work because with extended=1 the grouping is random even with offset and limit and many works not included 
 
 while ( loadForURL ($db, "https://librivox.org/api/feed/audiobooks?offset=".$offset."&limit=".$set_size."&extended=1") ) {
   $offset += $set_size;
@@ -109,9 +107,18 @@ function loadForURL ( $db, $librivox_url ) {
 	$book_properties['sections'] = insertSection ( $properties_array['children'], $db, $book_properties['id'], $iarchive_url );
       } else { // for properties that aren't an array, which is all except authors and sections
 	$book_properties[$properties_array['name']] = $properties_array['content'];
+	if ($properties_array['name'] == 'url_text_source') {
+	  $etext_url = $properties_array['content'];
+	  if ( strpos ($etext_url, 'gutenberg') !== false ) {
+	    $etext_url = rtrim ($etext_url, '/');
+	    $last_slash = strrpos ($etext_url, '/');
+	    $book_properties['etext_id'] = substr ($etext_url, $last_slash + 1); 
+	    if ( $book_properties['etext_id'] == 0 ) $book_properties['etext_id'] = null;
+	  }
+	}
       }
     }
-    $stmt = $db->prepare ('INSERT INTO audiobooks VALUES (:id,:title,:description,:language,:copyright_year,:num_sections,:url_rss,:url_zip_file,:url_project,:url_librivox,:url_iarchive,:url_other,:totaltime,:totaltimesecs,:authors,:sections,:genres,:publicdate,:downloads)');
+    $stmt = $db->prepare ('INSERT INTO audiobooks VALUES (:id,:title,:description,:language,:copyright_year,:num_sections,:url_text_source,:url_rss,:url_zip_file,:url_project,:url_librivox,:url_iarchive,:url_other,:totaltime,:totaltimesecs,:authors,:sections,:genres,:publicdate,:downloads,:etext_id)');
     
     $stmt->bindValue (':id', $book_properties['id'], PDO::PARAM_INT);
     $stmt->bindValue (':title', $book_properties['title'], PDO::PARAM_STR);
@@ -120,6 +127,7 @@ function loadForURL ( $db, $librivox_url ) {
     $stmt->bindValue (':totaltime', $book_properties['totaltime'], PDO::PARAM_STR);
     $stmt->bindValue (':copyright_year', $book_properties['copyright_year'], PDO::PARAM_INT);
     $stmt->bindValue (':num_sections', $book_properties['num_sections'], PDO::PARAM_INT);
+    $stmt->bindValue (':url_text_source', $book_properties['url_text_source'], PDO::PARAM_STR);
     $stmt->bindValue (':url_rss', $book_properties['url_rss'], PDO::PARAM_STR);
     $stmt->bindValue (':url_zip_file', $book_properties['url_zip_file'], PDO::PARAM_STR);
     $stmt->bindValue (':url_project', $book_properties['url_project'], PDO::PARAM_STR);
@@ -133,6 +141,7 @@ function loadForURL ( $db, $librivox_url ) {
     $stmt->bindValue (':genres', $book_properties['genre_ids'], PDO::PARAM_STR);
     $stmt->bindValue (':publicdate', $book_properties['publicdate'], PDO::PARAM_STR);
     $stmt->bindValue (':downloads', $book_properties['downloads'], PDO::PARAM_INT);
+    $stmt->bindValue (':etext_id', $book_properties['etext_id'], PDO::PARAM_INT);
     $stmt->execute();
   }
   
@@ -182,7 +191,7 @@ function insertSection ( $sectionXMLArray, $db, $parent_id, $iarchive_url ) { //
 	$section_properties[$section_property['name']] = $section_property['content'];
       }
     }
-    $stmt = $db->prepare ('INSERT INTO sections VALUES (:id, :section_number, :title, :parent_id, :author, :reader_name, :reader_id)');
+    $stmt = $db->prepare ('INSERT INTO sections VALUES (:id, :section_number, :title, :parent_id, :author, :reader_name, :reader_id, :language)');
     $stmt->bindValue (':id', $section_properties['id'], PDO::PARAM_INT);
     $stmt->bindValue (':section_number', $section_properties['section_number'], PDO::PARAM_INT);
     $stmt->bindValue (':title', $section_properties['title'], PDO::PARAM_STR);
@@ -190,6 +199,7 @@ function insertSection ( $sectionXMLArray, $db, $parent_id, $iarchive_url ) { //
     $stmt->bindValue (':author', html_entity_decode ($track_to_author[$section_properties['section_number']]), PDO::PARAM_STR); // Obtained URL for iarchive JSON data for this collection from LibriVox XML.  Both LibriVox and iarchive provide track numbe.r  Then linking author (from iarchive) by track number.
     $stmt->bindValue (':reader_name', $section_properties['reader'], PDO::PARAM_STR);
     $stmt->bindValue (':reader_id', $section_properties['reader_id'], PDO::PARAM_INT);
+    $stmt->bindValue (':language', $section_properties['language'], PDO::PARAM_STR);
     $stmt->execute();
   }
   return $section_ids;

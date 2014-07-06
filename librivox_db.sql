@@ -6,7 +6,8 @@ CREATE TABLE sections (
  parent_id int, -- refers to to audiobooks primary key
  author text,
  reader_name text,
- reader_id int
+ reader_id int,
+ language text
 );
 
 CREATE TABLE audiobooks (
@@ -17,6 +18,7 @@ CREATE TABLE audiobooks (
  language text,
  copyright_year int,
  num_sections int,
+ url_text_source text,
  url_rss text,
  url_zip_file text,
  url_project text,
@@ -29,8 +31,8 @@ CREATE TABLE audiobooks (
  sections text, -- comma separated ids
  genres text,
  publicdate text,
- downloads int
-
+ downloads int, 
+ etext_id int  -- gutenberg id derived from url_text_source where applicable 
 );
 
 CREATE TABLE authors (
