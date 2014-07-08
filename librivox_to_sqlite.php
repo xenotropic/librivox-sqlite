@@ -43,6 +43,8 @@ foreach ($book_id_list as $book_id_array) {
   
 }
 
+addAuthors();
+
 
 /** this doesn't work because with extended=1 the grouping is random even with offset and limit and many works not included 
 
@@ -61,7 +63,7 @@ echo "\n  Elapsed time: ". round ( $elapsed_time, 2) ."\n  LibriVox API fetch ti
 function loadForURL ( $db, $librivox_url ) { 
   global $time_for_iafetch, $time_for_lvfetch; $books_processed;
  
-  $loader = new XmlArray();
+  $loader = new XmlArray(); // this would have been faster using the serialized option from the API, oops
   
   $time = microtime (true);
   $array = $loader->load_string (file_get_contents ( $librivox_url )); 
@@ -71,7 +73,7 @@ function loadForURL ( $db, $librivox_url ) {
   $array = $array['children'][0]['children'];
   
   $iarchive_url;
-   
+  
   // echo "iarchive_url is " . $iarchive_url . "\n";
   
   foreach ( $array as $key=> $value ) {
@@ -204,6 +206,23 @@ function insertSection ( $sectionXMLArray, $db, $parent_id, $iarchive_url ) { //
   }
   return $section_ids;
 }
+
+
+function addAuthors() {
+  global $db_lv;
+  $authors_array = unserialize (file_get_contents ("https://librivox.org/api/feed/authors?format=serialized") );
+  $authors_array = $authors_array['authors'];
+  foreach ( $authors_array as $author_data ) {
+    $stmt = $db_lv->prepare ('INSERT INTO AUTHORS VALUES (:id, :first_name, :last_name, :dob, :dod)');
+    $stmt->bindValue (':id', $author_data['id'], PDO::PARAM_STR);
+    $stmt->bindValue (':first_name', $author_data['first_name'], PDO::PARAM_STR);
+    $stmt->bindValue (':last_name', $author_data['last_name'], PDO::PARAM_STR);
+    $stmt->bindValue (':dob', $author_data['dob'], PDO::PARAM_INT);
+    $stmt->bindValue (':dod', $author_data['dod'], PDO::PARAM_INT);
+    $stmt->execute();
+  }
+}
+
 
 class XmlArray {
   
